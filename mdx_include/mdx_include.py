@@ -21,6 +21,7 @@ from codecs import open
 import pkgutil
 import encodings
 import logging
+
 try:
     # python 3
     from urllib.parse import urlparse
@@ -45,6 +46,7 @@ logging.basicConfig()
 LOGGER_NAME = 'mdx_include-' + __version__
 log = logging.getLogger(LOGGER_NAME)
 
+
 def encoding_exists(encoding):
     """Check if an encoding is available in Python"""
     false_positives = set(["aliases"])
@@ -57,15 +59,17 @@ def encoding_exists(encoding):
             return True
     return False
 
+
 def get_remote_content_list(url, encoding='utf-8'):
     """Follow redirect and return the content"""
     try:
-        log.info("Downloading url: "+ url)
+        log.info("Downloading url: " + url)
         return ''.join([build_opener(HTTPRedirectHandler).open(url).read().decode(encoding), '\n']).splitlines(), True
     except Exception as err:
         # catching all exception, this will effectively return empty string
         log.exception("E: Failed to download: " + url)
         return [], False
+
 
 def get_local_content_list(filename, encoding):
     """Return the file content with status"""
@@ -76,7 +80,7 @@ def get_local_content_list(filename, encoding):
             textl = ''.join([f.read(), '\n']).splitlines()
             stat = True
     except Exception as e:
-        log.exception('E: Could not find file: {}'.format(filename,))
+        log.exception('E: Could not find file: {}'.format(filename, ))
     return textl, stat
 
 
@@ -85,10 +89,10 @@ class IncludeExtension(markdown.Extension):
 
     def __init__(self, configs={}):
         self.config = {
-            'base_path': [ '.', 'Base path from where relative paths are calculated',],
-            'encoding': [ 'utf-8', 'Encoding of the files.', ],
-            'allow_local': [ True, 'Allow including local files.', ],
-            'allow_remote': [ True, 'Allow including remote files.', ],
+            'base_path': ['.', 'Base path from where relative paths are calculated', ],
+            'encoding': ['utf-8', 'Encoding of the files.', ],
+            'allow_local': [True, 'Allow including local files.', ],
+            'allow_remote': [True, 'Allow including remote files.', ],
             'truncate_on_failure': [True, 'Truncate the include markdown if failed to get the content.'],
             'recurs_local': [True, 'Whether the inclusion is recursive for local files.'],
             'recurs_remote': [False, 'Whether the inclusion is recursive for remote files.'],
@@ -100,18 +104,26 @@ class IncludeExtension(markdown.Extension):
             'syntax_apply_indent': ['>', 'Character to specify apply indentation'],
             'content_cache_local': [True, 'Whether to cache content for local files'],
             'content_cache_remote': [True, 'Whether to cache content for remote files'],
-            'content_cache_clean_local': [False, 'Whether to clean content cache for local files after processing all the includes.'],
-            'content_cache_clean_remote': [False, 'Whether to clean content cache for remote files after processing all the includes.'],
+            'content_cache_clean_local': [False,
+                                          'Whether to clean content cache for local files after processing all the includes.'],
+            'content_cache_clean_remote': [False,
+                                           'Whether to clean content cache for remote files after processing all the includes.'],
             'allow_circular_inclusion': [False, 'Whether to allow circular inclusion.'],
-            'line_slice_separator': [['',''], 'A list of lines that will be used to separate parts specified by line slice syntax: 1-2,3-4,5 etc.'],
-            'recursive_relative_path': [False, 'Whether include paths inside recursive files should be relative to the parent file path'],
-            }
+            'line_slice_separator': [['', ''],
+                                     'A list of lines that will be used to separate parts specified by line slice syntax: 1-2,3-4,5 etc.'],
+            'recursive_relative_path': [False,
+                                        'Whether include paths inside recursive files should be relative to the parent file path'],
+        }
         # ~ super(IncludeExtension, self).__init__(*args, **kwargs)
         # default setConfig does not preserve None when the default config value is a bool (a bug may be or design decision)
         for k, v in configs.items():
             self.setConfig(k, v)
         # self.compiled_re = r'(?P<escape>\\)?\{!(?P<recursive>[+-])?\s*(?P<path>[^]|[]+?)(\s*\[ln:(?P<lines>[\d.,-]+)\])?\s*(\|\s*(?P<encoding>.+?)\s*)?!\}'
-        self.compiled_re = re.compile( ''.join([r'(?P<escape>\\)?', self.config['syntax_left'][0], r'(?P<recursive>[', self.config['syntax_recurs_on'][0], self.config['syntax_recurs_off'][0], r'])?(?P<apply_indent>', self.config['syntax_apply_indent'][0], r'?)?\s*(?P<path>[^]|[]+?)(\s*\[ln:(?P<lines>[\d.,-]+)\])?\s*(', self.config['syntax_delim'][0], r'\s*(?P<encoding>.+?)\s*)?', self.config['syntax_right'][0], ]))
+        self.compiled_re = re.compile(''.join(
+            [r'(?P<escape>\\)?', self.config['syntax_left'][0], r'(?P<recursive>[', self.config['syntax_recurs_on'][0],
+             self.config['syntax_recurs_off'][0], r'])?(?P<apply_indent>', self.config['syntax_apply_indent'][0],
+             r'?)?\s*(?P<path>[^]|[]+?)(\s*\[ln:(?P<lines>[\d.,-]+)\])?\s*(', self.config['syntax_delim'][0],
+             r'\s*(?P<encoding>.+?)\s*)?', self.config['syntax_right'][0], ]))
 
     def setConfig(self, key, value):
         """Sets the config key value pair preserving None value and validating the value type."""
@@ -124,14 +136,18 @@ class IncludeExtension(markdown.Extension):
             if isinstance(value, type(self.config[key][0])):
                 pass
             else:
-                raise TypeError("E: The type ({}) of the value ({}) does not match with the required type ({}) for the key {}.".format(type(value), value, type(self.config[key][0]), key))
+                raise TypeError(
+                    "E: The type ({}) of the value ({}) does not match with the required type ({}) for the key {}.".format(
+                        type(value), value, type(self.config[key][0]), key))
         self.config[key][0] = value
 
     def extendMarkdown(self, *args):
         if MARKDOWN_MAJOR == 2:
-            args[0].preprocessors.add( 'mdx_include', IncludePreprocessor(args[0], self.config, self.compiled_re),'_begin')
+            args[0].preprocessors.add('mdx_include', IncludePreprocessor(args[0], self.config, self.compiled_re),
+                                      '_begin')
         else:
-            args[0].preprocessors.register(IncludePreprocessor(args[0], self.config, self.compiled_re), 'mdx_include', 101)
+            args[0].preprocessors.register(IncludePreprocessor(args[0], self.config, self.compiled_re), 'mdx_include',
+                                           101)
 
 
 class IncludePreprocessor(markdown.preprocessors.Preprocessor):
@@ -142,6 +158,7 @@ class IncludePreprocessor(markdown.preprocessors.Preprocessor):
     This is done prior to any other Markdown processing.
     All file names are relative to the location from which Markdown is being called.
     '''
+
     def __init__(self, md, config, compiled_regex):
         md.mdx_include_content_cache_clean_local = self.mdx_include_content_cache_clean_local
         md.mdx_include_content_cache_clean_remote = self.mdx_include_content_cache_clean_remote
@@ -159,8 +176,8 @@ class IncludePreprocessor(markdown.preprocessors.Preprocessor):
         self.syntax_recurs_on = config['syntax_recurs_on'][0]
         self.syntax_recurs_off = config['syntax_recurs_off'][0]
         self.syntax_apply_indent = config['syntax_apply_indent'][0]
-        self.mdx_include_content_cache_local = {} # key = file_path_or_url, value = content
-        self.mdx_include_content_cache_remote = {} # key = file_path_or_url, value = content
+        self.mdx_include_content_cache_local = {}  # key = file_path_or_url, value = content
+        self.mdx_include_content_cache_remote = {}  # key = file_path_or_url, value = content
         self.content_cache_local = config['content_cache_local'][0]
         self.content_cache_remote = config['content_cache_remote'][0]
         self.content_cache_clean_local = config['content_cache_clean_local'][0]
@@ -170,7 +187,6 @@ class IncludePreprocessor(markdown.preprocessors.Preprocessor):
         self.recursive_relative_path = config['recursive_relative_path'][0]
 
         self.row_slice = RowSlice(self.line_slice_separator)
-
 
     def mdx_include_content_cache_clean_local(self):
         """Clean the cache dict for local files """
@@ -188,7 +204,6 @@ class IncludePreprocessor(markdown.preprocessors.Preprocessor):
         """Get the cache dict for remote files """
         return self.mdx_include_content_cache_remote
 
-
     def mdx_include_get_cyclic_safe_processed_line_list(self, textl, filename, parent):
         """Returns recursive text list if cyclic inclusion not detected,
         otherwise returns the  unmodified text list if cyclic is allowed,
@@ -199,9 +214,12 @@ class IncludePreprocessor(markdown.preprocessors.Preprocessor):
             textl = self.mdx_include_get_processed_lines(textl, filename)
         else:
             if self.allow_circular_inclusion:
-                log.warning("Circular inclusion detected in file: " + parent + " when including " + filename + ". Including in non-recursive mode ...")
+                log.warning(
+                    "Circular inclusion detected in file: " + parent + " when including " + filename + ". Including in non-recursive mode ...")
             else:
-                raise RuntimeError("Circular inclusion not allowed; detected in file: " + parent + " when including " + filename + " whose parents are: " + str(self.cyclic.root[filename]))
+                raise RuntimeError(
+                    "Circular inclusion not allowed; detected in file: " + parent + " when including " + filename + " whose parents are: " + str(
+                        self.cyclic.root[filename]))
         return textl
 
     def get_remote_content_list(self, filename, encoding='utf-8'):
@@ -241,7 +259,7 @@ class IncludePreprocessor(markdown.preprocessors.Preprocessor):
         new_lines = []
         for line in lines:
             resll = []
-            c = 0 # current offset
+            c = 0  # current offset
             ms = self.compiled_re.finditer(line)
             for m in ms:
                 textl = []
@@ -258,7 +276,8 @@ class IncludePreprocessor(markdown.preprocessors.Preprocessor):
                     file_lines = d.get('lines')
                     if not encoding_exists(encoding):
                         if encoding:
-                            log.warning("W: Encoding (%s) not recognized . Falling back to: %s" % (encoding, self.encoding,))
+                            log.warning(
+                                "W: Encoding (%s) not recognized . Falling back to: %s" % (encoding, self.encoding,))
                         encoding = self.encoding
 
                     urlo = urlparse(filename)
@@ -271,7 +290,7 @@ class IncludePreprocessor(markdown.preprocessors.Preprocessor):
                             # push the child parent relation
                             self.cyclic.add(filename, parent)
 
-                            #get the content split in lines handling cache
+                            # get the content split in lines handling cache
                             textl, stat = self.get_remote_content_list(filename, encoding)
 
                             # if slice sytax is found, slice the content, we must do it before going recursive because we don't
@@ -283,7 +302,8 @@ class IncludePreprocessor(markdown.preprocessors.Preprocessor):
                             # because some files can be included in non-recursive mode. If we just put the recursive
                             # content from cache it won't work.
                             # This if statement must be outside the cache management if statement.
-                            textl = self.get_recursive_content_list(textl, filename, parent, self.recursive_remote, recurse_state)
+                            textl = self.get_recursive_content_list(textl, filename, parent, self.recursive_remote,
+                                                                    recurse_state)
                         else:
                             # If allow_remote and allow_local both is false, then status is false
                             # so that user still have the option to truncate or not, textl is empty now.
@@ -296,11 +316,10 @@ class IncludePreprocessor(markdown.preprocessors.Preprocessor):
                             else:
                                 filename = os.path.normpath(os.path.join(self.base_path, filename))
 
-
-                        #push the child parent relation
+                        # push the child parent relation
                         self.cyclic.add(filename, parent)
 
-                        #get the content split in lines handling cache
+                        # get the content split in lines handling cache
                         textl, stat = self.get_local_content_list(filename, encoding)
 
                         # if slice sytax is found, slice the content, we must do it before going recursive because we don't
@@ -312,7 +331,8 @@ class IncludePreprocessor(markdown.preprocessors.Preprocessor):
                         # because some files can be included in non-recursive mode. If we just put the recrsive
                         # content from cache it won't work.
                         # This if statement must be outside the cache management if statement.
-                        textl = self.get_recursive_content_list(textl, filename, parent, self.recursive_local, recurse_state)
+                        textl = self.get_recursive_content_list(textl, filename, parent, self.recursive_local,
+                                                                recurse_state)
                     else:
                         # If allow_remote and allow_local both is false, then status is false
                         # so that user still have the option to truncate or not, textl is empty now.
@@ -326,9 +346,9 @@ class IncludePreprocessor(markdown.preprocessors.Preprocessor):
                     textl = [total_match]
                 s, e = m.span()
                 if textl:
-                    #textl has at least one element
+                    # textl has at least one element
                     if resll:
-                        resll[-1] = ''.join([resll[-1], line[c:s], textl[0] ])
+                        resll[-1] = ''.join([resll[-1], line[c:s], textl[0]])
                         resll.extend(textl[1:])
                     else:
                         if apply_indent != '':
@@ -348,7 +368,6 @@ class IncludePreprocessor(markdown.preprocessors.Preprocessor):
             new_lines.extend(resll)
         return new_lines
 
-
     def run(self, lines):
         """Process the list of lines provided and return a modified list"""
         self.cyclic = Cyclic()
@@ -359,9 +378,12 @@ class IncludePreprocessor(markdown.preprocessors.Preprocessor):
             self.mdx_include_content_cache_clean_remote()
         return new_lines
 
+
 def makeExtension(*args, **kwargs):  # pragma: no cover
     return IncludeExtension(kwargs)
 
+
 if __name__ == "__main__":
     import doctest
+
     doctest.testmod()
