@@ -1,0 +1,16 @@
+diagram: how does metaclass work?
+
+sequence:
+m.title: Metaclass
+c.title: Class
+i.title: Instance
+u.title: User
+p.title: Python Interpreter
+p -> m: __prepare__ => namespace: dict
+p -> m: __new__ => cls_obj
+    for: descriptor in descriptors(cls_obj):
+        m -> c: descriptor.__set_name__(<name>)
+    m -> c: __init_subclass__()
+u -> c: __new__ => instance
+u -> i: __init__
+u -> i: __del__

@@ -2,8 +2,6 @@
 from __future__ import absolute_import
 from __future__ import unicode_literals
 
-# from codecs import open
-# import sys
 import logging
 import markdown
 import unittest
@@ -11,6 +9,7 @@ from mdx_include.mdx_include import IncludeExtension
 
 LOGGER_NAME = 'mdx_include_test'
 log = logging.getLogger(LOGGER_NAME)
+
 
 def get_file_content(path):
     cont = ''
@@ -20,6 +19,7 @@ def get_file_content(path):
     except Exception as e:
         log.exception("E: could not read file: " + path)
     return cont
+
 
 def assertEqual(self, html, output):
     if tuple(markdown.version_info) >= (3, 3):
@@ -39,7 +39,7 @@ This is a simple text
 
 Including test1.md {! mdx_include/test/test1.md !}
 
-Including test2.md {! mdx_include/test/test2.md | utf-8 !}
+Including test2.md {! utf-8 mdx_include/test/test2.md !}
 
 Including a gist:
 
@@ -56,11 +56,37 @@ Forcing non-recursive include: {!- mdx_include/test/testi.md !}
         """.strip()
         output = get_file_content('mdx_include/test/t.html')
         md = markdown.Markdown(extensions=[IncludeExtension(),
-                            'markdown.extensions.extra',
-                            ])
+                                           'markdown.extensions.extra',
+                                           ])
         html = md.convert(text)
         # print(html)
         assertEqual(self, html, output.strip())
+
+    def test_filters(self):
+        # TODO: this test does not prove itself
+        text = r"""
+This is a simple text
+Including diagram.adia {! diagram.adia | seq_diagram() | html_escape() | html_wrap(tag='pre') !}
+Including diagram.adia {! diagram.adia | adia() !}
+        """.strip()
+        config = {
+            'html_escape_table': {
+                '|': '||'
+            },
+            'html_wrap_default': {
+                'pre': {
+                    'style': 'background-color: #282828'
+                }
+            }
+        }
+        md = markdown.Markdown(
+            extensions=[
+                IncludeExtension(configs=config),
+                'markdown.extensions.extra'
+            ]
+        )
+        html = md.convert(text)
+        print(html)
 
     def test_non_existent(self):
         text = """
@@ -79,14 +105,13 @@ Include was here -> {! https://no.no/ !} <- Non existent URL also strips off the
         # ~ print(html)
         self.assertEqual(html, output.strip())
 
-
     def test_config(self):
         text = r"""
 This is a test with custom configuration
 
 Including test1.md {! test1.md !} where base path is set to mdx_include/test/
 
-Including test2.md {! test2.md | utf-8 !} where base path is set to mdx_include/test/
+Including test2.md {! utf-8 test2.md !} where base path is set to mdx_include/test/
 
 Including a gist:
 
@@ -109,31 +134,29 @@ Forcing recursive include when recurs_local is set to None: {!+ testi.md !}
         """.strip()
         output = get_file_content('mdx_include/test/tc.html')
         configs = {
-                    'mdx_include': {
-                        'base_path': 'mdx_include/test/',
-                        'encoding': 'utf-8',
-                        'allow_local': True,
-                        'allow_remote': True,
-                        'truncate_on_failure': False,
-                        'recurs_local': None,
-                        'recurs_remote': False,
-                        'syntax_left': r'\{!',
-                        'syntax_right': r'!\}',
-                        'syntax_delim': r'\|',
-                        'syntax_recurs_on': '+',
-                        'syntax_recurs_off': '-',
-                        'content_cache_local': True,
-                        'content_cache_remote': True,
-                        'content_cache_clean_local': False,
-                        'content_cache_clean_remote': False,
-
-                    },
-                }
+            'mdx_include': {
+                'base_path': 'mdx_include/test/',
+                'encoding': 'utf-8',
+                'allow_local': True,
+                'allow_remote': True,
+                'truncate_on_failure': False,
+                'recurs_local': None,
+                'recurs_remote': False,
+                'syntax_left': r'\{!',
+                'syntax_right': r'!\}',
+                'syntax_delim': r'\|',
+                'syntax_recurs_on': '+',
+                'syntax_recurs_off': '-',
+                'content_cache_local': True,
+                'content_cache_remote': True,
+                'content_cache_clean_local': False,
+                'content_cache_clean_remote': False
+            },
+        }
         md = markdown.Markdown(extensions=[IncludeExtension(configs['mdx_include']), 'markdown.extensions.extra'])
         html = md.convert(text)
         # ~ print(html)
         assertEqual(self, html, output.strip())
-
 
     def test_recurs(self):
         text = r"""
@@ -144,26 +167,26 @@ Forcing recursive include when recurs_local is set to None: {!+ mdx_include/test
         """.strip()
         output = get_file_content('mdx_include/test/tr.html')
         configs = {
-                    'mdx_include': {
-                        'base_path': '',
-                        'encoding': 'utf-8',
-                        'allow_local': True,
-                        'allow_remote': True,
-                        'truncate_on_failure': False,
-                        'recurs_local': None,
-                        'recurs_remote': False,
-                        'syntax_left': r'\{!',
-                        'syntax_right': r'!\}',
-                        'syntax_delim': r'\|',
-                        'syntax_recurs_on': '+',
-                        'syntax_recurs_off': '-',
-                        'content_cache_local': True,
-                        'content_cache_remote': True,
-                        'content_cache_clean_local': False,
-                        'content_cache_clean_remote': False,
+            'mdx_include': {
+                'base_path': '',
+                'encoding': 'utf-8',
+                'allow_local': True,
+                'allow_remote': True,
+                'truncate_on_failure': False,
+                'recurs_local': None,
+                'recurs_remote': False,
+                'syntax_left': r'\{!',
+                'syntax_right': r'!\}',
+                'syntax_delim': r'\|',
+                'syntax_recurs_on': '+',
+                'syntax_recurs_off': '-',
+                'content_cache_local': True,
+                'content_cache_remote': True,
+                'content_cache_clean_local': False,
+                'content_cache_clean_remote': False,
 
-                    },
-                }
+            },
+        }
         md = markdown.Markdown(extensions=[IncludeExtension(configs['mdx_include']), 'markdown.extensions.extra'])
         html = md.convert(text)
         # ~ print(html)
@@ -180,12 +203,12 @@ Forcing recursive include when recurs_local is set to None: {!+ mdx_include/test
 
     """
         configs = {
-                    'mdx_include': {
-                        'base_path': 'mdx_include/test/',
+            'mdx_include': {
+                'base_path': 'mdx_include/test/',
 
-                    },
-                }
-        md = markdown.Markdown(extensions=[IncludeExtension(configs['mdx_include']), 'markdown.extensions.extra',])
+            },
+        }
+        md = markdown.Markdown(extensions=[IncludeExtension(configs['mdx_include']), 'markdown.extensions.extra', ])
         html = md.convert(text)
         # ~ print(html)
         print(md.mdx_include_get_content_cache_local())
@@ -238,7 +261,6 @@ Including a gist:
         md.mdx_include_content_cache_clean_local()
         md.mdx_include_content_cache_clean_remote()
 
-
     def test_cyclic(self):
         text = r"""
 This is a test with circular inclusion
@@ -248,11 +270,11 @@ This is a test with circular inclusion
         """.strip()
         output = get_file_content('mdx_include/test/testcy.html')
         configs = {
-                    'mdx_include': {
-                        'base_path': 'mdx_include/test/',
-                        'allow_circular_inclusion': True,
-                    },
-                }
+            'mdx_include': {
+                'base_path': 'mdx_include/test/',
+                'allow_circular_inclusion': True,
+            },
+        }
         md = markdown.Markdown(extensions=[IncludeExtension(configs['mdx_include']), 'markdown.extensions.extra'])
         html = md.convert(text)
         # ~ print(html)
@@ -271,16 +293,15 @@ This is a test with file slice syntax
         """.strip()
         output = get_file_content('mdx_include/test/tfls.html')
         configs = {
-                    'mdx_include': {
-                        'base_path': 'mdx_include/test/',
-                        'allow_circular_inclusion': True,
-                    },
-                }
+            'mdx_include': {
+                'base_path': 'mdx_include/test/',
+                'allow_circular_inclusion': True,
+            },
+        }
         md = markdown.Markdown(extensions=[IncludeExtension(configs['mdx_include']), 'markdown.extensions.extra'])
         html = md.convert(text)
         # ~ print(html)
         self.assertEqual(html, output.strip())
-
 
     def test_relative_include(self):
         text = r"""
@@ -293,11 +314,11 @@ This is a test with relative include
         """.strip()
         output = get_file_content('mdx_include/test/trl.html')
         configs = {
-                    'mdx_include': {
-                        'allow_circular_inclusion': True,
-                        'recursive_relative_path': True,
-                    },
-                }
+            'mdx_include': {
+                'allow_circular_inclusion': True,
+                'recursive_relative_path': True,
+            },
+        }
         md = markdown.Markdown(extensions=[IncludeExtension(configs['mdx_include']), 'markdown.extensions.extra'])
         html = md.convert(text)
         # ~ print(html)

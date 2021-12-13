@@ -17,10 +17,12 @@ from __future__ import unicode_literals
 import markdown
 import re
 import os
+import json
 from codecs import open
 import pkgutil
 import encodings
 import logging
+import xml.etree.ElementTree as xet
 
 try:
     # python 3
@@ -37,6 +39,7 @@ except ImportError:
 from rcslice import RowSlice
 from cyclic import Cyclic
 from . import version
+import adia
 
 __version__ = version.__version__
 
@@ -79,9 +82,135 @@ def get_local_content_list(filename, encoding):
         with open(filename, 'r', encoding=encoding) as f:
             textl = ''.join([f.read(), '\n']).splitlines()
             stat = True
-    except Exception as e:
+    except Exception:
         log.exception('E: Could not find file: {}'.format(filename, ))
     return textl, stat
+
+
+class Filters(object):
+
+    def __init__(self, config):
+        self.config = config
+
+    def adia(self, lines):
+        lines = self.seq_diagram(lines)
+        lines = self.html_escape(lines)
+        lines = self.html_wrap(lines, 'pre')
+        return lines
+
+    def seq_diagram(self, lines):
+        diagram = adia.Diagram()
+        for l in lines:
+            diagram.parseline(l)
+        return diagram.renders().splitlines()
+
+    def html_wrap(self, lines, tag, attrs='{}'):
+        # TODO: set default background color?
+        attrs_1 = self.config['html_wrap_default'][0].get(tag, {})
+        attrs_2 = json.loads(attrs)
+        attrs_1.update(attrs_2)
+        element = xet.Element(tag, attrs_1)
+        # avoid <tag_name/>
+        element.text = ' '
+        raw_tag = xet.tostring(element).decode()
+        tail = '</%s>\n' % tag
+
+        # the return value is weird because the first element in the array
+        # will be removed in the future and i do not investigate it why yet.
+        return ['', raw_tag[:-len(tail)] + '\n'] + lines + [tail]
+
+    def html_escape(self, lines):
+        table_default = self.config['html_escape_table_default'][0]
+        table = self.config['html_escape_table'][0]
+        table.update(table_default)
+
+        for i, l in enumerate(lines):
+            for k, v in table.items():
+                l = l.replace(k, v)
+            lines[i] = l
+        return lines
+
+    def parse_filters(self, delimiter, string):
+        parts = string.split(delimiter)[1:]
+        calls = []
+        for p in parts:
+            name, kwargs = self.parse_method_call(p)
+            calls.append((name, kwargs))
+        return calls
+
+    def parse_method_call(self, str_call):
+        re_signature = r'\s*(?P<method>\w+)\s*\((?P<kwargs>.*)\)'
+        pattern = re.compile(re_signature, re.ASCII)
+        m = pattern.match(str_call)
+        if not m:
+            raise Exception('Syntax Error: ' + str_call)
+        name_method = m.group('method')
+        kwargs = m.group('kwargs')
+        return name_method, self.parse_kwargs(kwargs)
+
+    def parse_kwargs(self, str_kwargs):
+        QUOTE = '\'"'
+        size = len(str_kwargs)
+        pos1, kwargs = 0, {}
+
+        if not str_kwargs.strip():
+            return kwargs
+
+        p_key = re.compile('\s*(?P<key>\w+)\s*=\s*', re.ASCII)
+        p_delimiter = {
+            '\'': re.compile(r'\\*\''),
+            '"': re.compile(r'\\*"'),
+            ',': re.compile(r'\\*,')
+        }
+        while pos1 < len(str_kwargs):
+            match = p_key.match(str_kwargs, pos1)
+            if not match or match.end() >= len(str_kwargs):
+                raise Exception('failed to parse the filter.')
+            key = match.group('key')
+            pos1 = match.end()
+
+            if pos1 >= size:
+                break
+
+            c = str_kwargs[pos1]
+            quoted = False
+
+            if c in QUOTE:
+                quoted = True
+                pos1 += 1
+                deli = p_delimiter[c]
+            else:
+                deli = p_delimiter[',']
+
+            pos2 = pos1
+
+            while True:
+                m = deli.search(str_kwargs, pos2)
+                if not m:
+                    pos2 = len(str_kwargs)
+                    break
+                span = m.span(0)
+                pos2 = span[1]
+                if (span[1] - span[0]) % 2 != 0:
+                    break
+
+            value = str_kwargs[pos1:pos2 - 1].strip()
+            kwargs[key] = value
+
+            if quoted:
+                while pos2 < size:
+                    c = str_kwargs[pos2]
+                    if c == ' ':
+                        pos2 += 1
+                    elif c == ',':
+                        pos2 += 1
+                        break
+                    else:
+                        raise Exception('Syntax Error: ' + str_kwargs)
+
+            pos1 = pos2
+
+        return kwargs
 
 
 class IncludeExtension(markdown.Extension):
@@ -98,32 +227,97 @@ class IncludeExtension(markdown.Extension):
             'recurs_remote': [False, 'Whether the inclusion is recursive for remote files.'],
             'syntax_left': [r'\{!', 'The left mandatory part of the syntax'],
             'syntax_right': [r'!\}', 'The right mandatory part of the syntax'],
-            'syntax_delim': [r'\|', 'Delemiter used to separate path from encoding'],
+            'syntax_delim': [r'|', 'Delemiter used to separate path from encoding'],
             'syntax_recurs_on': ['+', 'Character to specify recurs on'],
             'syntax_recurs_off': ['-', 'Character to specify recurs off'],
             'syntax_apply_indent': ['>', 'Character to specify apply indentation'],
             'content_cache_local': [True, 'Whether to cache content for local files'],
             'content_cache_remote': [True, 'Whether to cache content for remote files'],
-            'content_cache_clean_local': [False,
-                                          'Whether to clean content cache for local files after processing all the includes.'],
-            'content_cache_clean_remote': [False,
-                                           'Whether to clean content cache for remote files after processing all the includes.'],
+            'content_cache_clean_local': [
+                False,
+                'Whether to clean content cache for local files after processing all the includes.'
+            ],
+            'content_cache_clean_remote': [
+                False,
+                'Whether to clean content cache for remote files after processing all the includes.'
+            ],
             'allow_circular_inclusion': [False, 'Whether to allow circular inclusion.'],
-            'line_slice_separator': [['', ''],
-                                     'A list of lines that will be used to separate parts specified by line slice syntax: 1-2,3-4,5 etc.'],
-            'recursive_relative_path': [False,
-                                        'Whether include paths inside recursive files should be relative to the parent file path'],
+            'line_slice_separator': [
+                ['', ''],
+                'A list of lines that will be used to separate parts specified by line slice syntax: 1-2,3-4,5 etc.'
+            ],
+            'recursive_relative_path': [
+                False,
+                'Whether include paths inside recursive files should be relative to the parent file path'
+            ],
+            'html_escape_table_default': [
+                {
+                    '<': '&lt',
+                    '>': '&gt'
+                },
+                'The default table used by html_escape to setup the character to be escaped.'
+                'Assigning value to this property will override it.'
+            ],
+            'html_escape_table': [
+                {},
+                'Used by html_escape to setup the character to be escaped.'
+                'this property will be merged with html_escape_table_default'
+            ],
+            'html_wrap_default': [
+                {
+                    'pre': {
+                        'style': 'background-color: #282828'
+                    }
+                },
+                'Default attributes for tag used by html_wrap. The key is tag name,'
+                'the corresponding value is a dict of attributes. Assigning value to'
+                'this property will override it'
+            ],
+             'html_wrap': [
+                {},
+                'attributes for tag used by html_wrap. The key is tag name,'
+                'the corresponding value is a dict of attributes.'
+                'This property will be merged with html_wrap_default'
+            ]
         }
-        # ~ super(IncludeExtension, self).__init__(*args, **kwargs)
-        # default setConfig does not preserve None when the default config value is a bool (a bug may be or design decision)
+
         for k, v in configs.items():
             self.setConfig(k, v)
-        # self.compiled_re = r'(?P<escape>\\)?\{!(?P<recursive>[+-])?\s*(?P<path>[^]|[]+?)(\s*\[ln:(?P<lines>[\d.,-]+)\])?\s*(\|\s*(?P<encoding>.+?)\s*)?!\}'
+
+        re_filters = r'%s\s*\w+\s*\(.*?\)\s*' % self.config['syntax_delim']
+
+        escape = r'(?P<escape>\\)?'
+        modifiers = r'(?P<recursive>[%s%s])?(?P<apply_indent>%s?)?' % (
+            self.config['syntax_recurs_on'][0],
+            self.config['syntax_recurs_off'][0],
+            self.config['syntax_apply_indent'][0],
+        )
+        encoding = r'(\s+(?P<encoding>[-\w]+)\s+)?'
+        path = r'\s*(?P<path>[^]|[]+?)'
+        slices = r'(\s*\[ln:(?P<lines>[\d.,-]+)\])?\s*'
+        filters = '(?P<filters>(' + re_filters + ')*)'
+
+        self.compiled_re = re.compile(''.join([
+            escape,
+            self.config['syntax_left'][0],
+            modifiers, encoding, path, slices, filters,
+            self.config['syntax_right'][0]
+        ]))
+
+        # TODO: remove it lately
+        '''
         self.compiled_re = re.compile(''.join(
-            [r'(?P<escape>\\)?', self.config['syntax_left'][0], r'(?P<recursive>[', self.config['syntax_recurs_on'][0],
-             self.config['syntax_recurs_off'][0], r'])?(?P<apply_indent>', self.config['syntax_apply_indent'][0],
-             r'?)?\s*(?P<path>[^]|[]+?)(\s*\[ln:(?P<lines>[\d.,-]+)\])?\s*(', self.config['syntax_delim'][0],
-             r'\s*(?P<encoding>.+?)\s*)?', self.config['syntax_right'][0], ]))
+            [r'(?P<escape>\\)?',
+             self.config['syntax_left'][0],
+             r'(?P<recursive>[',
+             self.config['syntax_recurs_on'][0],
+             self.config['syntax_recurs_off'][0], r'])?(?P<apply_indent>',
+             self.config['syntax_apply_indent'][0],
+             r'?)?\s*(?P<path>[^]|[]+?)(\s*\[ln:(?P<lines>[\d.,-]+)\])?\s*',
+             '(?P<filters>(' + re_filters + ')*)',
+             self.config['syntax_right'][0]]
+        ))
+        '''
 
     def setConfig(self, key, value):
         """Sets the config key value pair preserving None value and validating the value type."""
@@ -133,9 +327,7 @@ class IncludeExtension(markdown.Extension):
             else:
                 raise TypeError("E: The type of the value (%s) for the key %s is not correct." % (value, key,))
         else:
-            if isinstance(value, type(self.config[key][0])):
-                pass
-            else:
+            if not isinstance(value, type(self.config[key][0])):
                 raise TypeError(
                     "E: The type ({}) of the value ({}) does not match with the required type ({}) for the key {}.".format(
                         type(value), value, type(self.config[key][0]), key))
@@ -165,6 +357,8 @@ class IncludePreprocessor(markdown.preprocessors.Preprocessor):
         md.mdx_include_get_content_cache_local = self.mdx_include_get_content_cache_local
         md.mdx_include_get_content_cache_remote = self.mdx_include_get_content_cache_remote
         super(IncludePreprocessor, self).__init__(md)
+
+        self.config = config
         self.compiled_re = compiled_regex
         self.base_path = config['base_path'][0]
         self.encoding = config['encoding'][0]
@@ -176,6 +370,7 @@ class IncludePreprocessor(markdown.preprocessors.Preprocessor):
         self.syntax_recurs_on = config['syntax_recurs_on'][0]
         self.syntax_recurs_off = config['syntax_recurs_off'][0]
         self.syntax_apply_indent = config['syntax_apply_indent'][0]
+        self.syntax_delim = config['syntax_delim'][0]
         self.mdx_include_content_cache_local = {}  # key = file_path_or_url, value = content
         self.mdx_include_content_cache_remote = {}  # key = file_path_or_url, value = content
         self.content_cache_local = config['content_cache_local'][0]
@@ -268,6 +463,8 @@ class IncludePreprocessor(markdown.preprocessors.Preprocessor):
                 d = m.groupdict()
                 escape = d.get('escape')
                 apply_indent = d.get('apply_indent')
+                str_filters = d.get('filters')
+                filters = Filters(self.config)
                 if not escape:
                     filename = d.get('path')
                     filename = os.path.expanduser(filename)
@@ -337,6 +534,15 @@ class IncludePreprocessor(markdown.preprocessors.Preprocessor):
                         # If allow_remote and allow_local both is false, then status is false
                         # so that user still have the option to truncate or not, textl is empty now.
                         stat = False
+                    if str_filters and stat:
+                        calls = filters.parse_filters(self.syntax_delim, str_filters)
+                        print(calls)
+                        for name, kwargs in calls:
+                            func = getattr(filters, name, None)
+                            if func:
+                                textl = func(textl, **kwargs)
+                            else:
+                                raise Exception('no method was found for filter ' + name)
                 else:
                     # this one is escaped, gobble up the escape backslash
                     textl = [total_match[1:]]
