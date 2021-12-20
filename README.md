@@ -14,18 +14,34 @@ Circular inclusion by default raises an exception. You can change this behavior 
 
 **You should not use markdown-include along with this extension, choose either one, not both.**
 
+
+---
+
+
 # Syntax
 
 1. **Simple:** `{! file_path_or_url !}`
-2. **With explicit encoding:** `{! file_path_or_url | encoding !}`
-3. **With recurs_state on:** `{!+ file_path_or_url !}` or `{!+ file_path_or_url | encoding !}`. This makes the included file to be able to include other files. This is meaningful only when recursion is set to `None`. If it is set to `False`, this explicit recurs_state defintion can not force recursion. This is a depth 1 recursion, so you can choose which one to recurs and which one to not.
-4. **With recurs_state off:** `{!- file_path_or_url !}` or `{!- file_path_or_url | encoding !}`. This will force not to recurs even when recursion is set to `True`.
-5. **Applying indentation** `{!> file_path_or_url!}`. This will apply the indentation found in the include line before the include for all the lines in the included file.
-6. **Escaped syntax:** You can escape it to get the literal. For example, `\{! file_path_or_url !}` will give you literal `{! file_path_or_url !}` and `\\\{! file_path_or_url !}` will give you `\{! file_path_or_url !}`
-7. **File slice:** You can slice a file by line and column number. The syntax is `{! file_path [ln:l.c-l.c,l.c-l.c,...] !}`. No spaces allowed inside file slice syntax `[ln:l.c-l.c,l.c-l.c,]`. See more detals in [File slicing section](#file-slicing).
+2. **With explicit encoding:** `{! encoding file_path_or_url !}`
+3. **With recurs_state on:** `{!+ file_path_or_url !}` or `{!+ encoding file_path_or_url !}`.
+This makes the included file to be able to include other files. This is meaningful only when
+recursion is set to `None`. If it is set to `False`, this explicit recurs_state defintion can
+not force recursion. This is a depth 1 recursion, so you can choose which one to recurs and
+which one to not.
+4. **With recurs_state off:** `{!- file_path_or_url !}` or `{!- encoding file_path_or_url !}`.
+This will force not to recurs even when recursion is set to `True`.
+5. **Applying indentation** `{!> file_path_or_url!}`. This will apply the indentation found in
+the include line before the include for all the lines in the included file.
+6. **Escaped syntax:** You can escape it to get the literal. For example, `\{! file_path_or_url !}`
+will give you literal `{! file_path_or_url !}` and `\\\{! file_path_or_url !}` will give
+you`\{! file_path_or_url !}`
+7. **File slice:** You can slice a file by line and column number. The syntax is
+`{! file_path [ln:l.c-l.c,l.c-l.c,...] !}`. No spaces allowed inside file slice syntax
+`[ln:l.c-l.c,l.c-l.c,]`. See more detals in [File slicing section](#file-slicing).
+8. **Filters:** send the file content to specific method for further processing by applying
+syntax like this `{! file_path_or_url [| METHOD_CALL [| METHOD_CALL [|...]] ] !}`, where **METHOD_CALL**
+is called as `method_name(k1=v1, k2=v2, ...)`.
 
-
-**General syntax:** `{!recurs_state apply_indent file_path_or_url [ln:slice_syntax] | encoding !}`
+**General syntax:** `{![recurs_state] [apply_indent] [encoding] file_path_or_url [ln:slice_syntax] !}`
 
 > The spaces are not necessary. They are just to make it look nice :) . No spaces allowed between `{!` and recurs_state (`+-`). If apply indentation is specified then it must follow recurse_state immediately or the `{!` if recurse_state is not specified. 
 
@@ -63,7 +79,7 @@ pip install mdx_include
 
 ```python
 text = r"""
-some text {! test1.md !} some more text {! test2.md | utf-8 !}
+some text {! test1.md !} some more text {! utf-8 test2.md !}
 
 Escaping will give you the exact literal \{! some_file !}
 
@@ -112,6 +128,12 @@ Config param | Default | Details
 `allow_circular_inclusion` | `False` | Whether to allow circular inclusion. If allowed, the affected files will be included in non-recursive mode, otherwise it will raise an exception.
 `line_slice_separator` | `['','']` | A list of lines that will be used to separate parts specified by line slice syntax: 1-2,3-4,5 etc.
 `recursive_relative_path` | `False` | Whether include paths inside recursive files should be relative to the parent file path
+`html_escape_table_default` | {"<": "&lt", ">": "&gt"} | The default table used by `html_escape` to setup the character to be escaped. Assigning value to this property will override it.
+`html_escape_table` | {} | Used by `html_escape` to setup the character to be escaped. This property will be merged with `html_escape_table_default`.
+`html_wrap_default` | {"pre": { "style": "background-color: #282828"}} | Default attributes for tag used by `html_wrap`. The key is tag name, the corresponding value is a dict of attributes. Assigning value to this property will override it
+`html_wrap` | {} | attributes for tag used by `html_wrap`. The key is tag name, the corresponding value is a dict of attributes. This property will be merged with `html_wrap_default`.
+
+
 
 ## Example with configuration
 
@@ -171,6 +193,30 @@ Slice | Details
 Multiple slicing can be done by adding more slice expressions with commas (s`,`). In this case, a separator (default is two newlines) is inserted between each slice. For example, with slice expression `1-2,4-9`, two newlines will be inserted between the lines 1-2 and 4-9.
 
 More details on the [rcslice doc](https://github.com/neurobin/rcslice)
+
+
+# Filters
+
+built-in filters:
+
+- `seq_diagram()`
+    > Used when the input file is an [ADia](https://pylover.github.io/adia/docs/latest/html/lang.html) script.
+- `html_escape()`
+    > Escape some special character in html like '>' to '&gt' or '<' to '&lt'.
+    > Characters in **html_escape_table_default** and **html_escape_table** will be escaped.
+- `html_wrap(tag=<tag_name>, attrs='attributes of the tag in json string, default to {}')`
+    > Wrap the input file content with the provided html tag.
+- `adia()`
+    > Combination of `seq_diagram`, `html_escape` and `html_wrap`. `{! file_path_or_url | adia() !}` is equal to
+    > `{! file_path_or_url | seq_diagram() | html_escape() | html_wrap(tag='pre') !}`
+
+This feature is inspired by adding ascii sequence diagram to markdown by wrapping it inside code block.
+However, it will display incorrectly after translating into html, which can be solved by wrapping the
+ascii diagram into html tag `<pre></pre>` manually instead of using code block. By applying filters,
+you can display ascii diagram correctly without handling html explictly.
+
+In the future, more functionality will be added to filters if necessary.
+
 
 # Manual cache control
 
